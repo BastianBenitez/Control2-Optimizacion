@@ -61,3 +61,39 @@ def normalize(points):
     ratio = np.array(ratio) / max(ratio)
     norm = points.apply(lambda c: (c - c.min()) / (c.max() - c.min()))
     return norm.apply(lambda p: ratio * p, axis=1)
+
+def read_optimal_tour(filename):
+    """
+    Read a file in .tour format into a list representing the optimal tour
+
+    The .tour files typically contain the optimal order of nodes for a TSP problem.
+    """
+    with open(filename) as f:
+        tour_start = None
+        dimension = None
+        lines = f.readlines()
+
+        # Obtain the information about the .tour file
+        i = 0
+        while i < len(lines) and (not dimension or not tour_start):
+            line = lines[i]
+            if line.startswith('DIMENSION :') or line.startswith('DIMENSION:'):
+                dimension = int(line.split()[-1])
+            if line.startswith('TOUR_SECTION'):
+                tour_start = i
+            i = i+1
+
+        if dimension is None or tour_start is None:
+            raise ValueError(f"Could not find DIMENSION or TOUR_SECTION in file {filename}")
+
+        # Extract the tour
+        tour = []
+        for i in range(tour_start + 1, len(lines)):
+            line = lines[i].strip()
+            if line == "-1" or line == "EOF" or not line:
+                break
+            
+            city_id = int(line.strip())
+            tour.append(city_id)
+        
+        return tour
