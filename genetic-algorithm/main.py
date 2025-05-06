@@ -2,6 +2,7 @@ import random
 import copy
 import math
 import matplotlib.pyplot as plt
+import time  # Added time module
 
 POPULATION_SIZE = 20
 population = []
@@ -26,6 +27,35 @@ def read_tsplib_file(filename):
                     y_coord = float(parts[2])
                     coords.append((x_coord, y_coord))
     return coords
+
+def read_optimal_tour(filename):
+    """Reads the optimal tour from a .tour file."""
+    optimal_path = []
+    with open(filename, 'r') as file:
+        start = False
+        for line in file:
+            if line.startswith("TOUR_SECTION"):
+                start = True
+                continue
+            if start:
+                if line.strip() == "-1" or line.strip() == "EOF":
+                    break
+                city_number = int(line.strip())
+                optimal_path.append(city_number)
+    return optimal_path
+
+def calculate_tour_length(tour, distance_matrix):
+    """Calculate the length of a given tour."""
+    total_distance = 0
+    for i in range(len(tour) - 1):
+        a = tour[i] - 1  # Adjusting for 0-indexed arrays
+        b = tour[i + 1] - 1
+        total_distance += distance_matrix[a][b]
+    # Add distance from last to first city to complete the tour
+    a = tour[-1] - 1
+    b = tour[0] - 1
+    total_distance += distance_matrix[a][b]
+    return total_distance
 
 def generatePossiblePath():
     path = []
@@ -119,6 +149,9 @@ def doCycle(sorted_x):
 
 def main():
     global CITIES_SIZE, TOUR_SIZE, dCidade
+    
+    model_name = "GA-TSP"  # Name of the algorithm model
+    start_time = time.time()  # Start timing execution
 
     coords = read_tsplib_file("a280.tsp")
     CITIES_SIZE = len(coords)
@@ -140,14 +173,105 @@ def main():
         costByExecution.append(sorted_x[0][1])
 
     sorted_x = fitnessFunction()
-    print("Ciudades:", CITIES_SIZE)
-    print("Mejor Costo:", sorted_x[0][1])
-    print("Mejor Ruta:", population[sorted_x[0][0]])
-
-    plt.plot(costByExecution)
-    plt.title("Costo por generación")
-    plt.xlabel("Generación")
-    plt.ylabel("Costo")
+    best_solution_index = sorted_x[0][0]
+    best_solution_cost = sorted_x[0][1]
+    best_solution_path = population[best_solution_index]
+    
+    # Complete the tour by adding the first city at the end
+    complete_best_path = best_solution_path + [best_solution_path[0]]
+    
+    # Read the optimal tour
+    try:
+        optimal_tour = read_optimal_tour("a280.opt.tour")
+        
+        # Calculate distance for the optimal tour
+        for i in range(CITIES_SIZE):
+            for j in range(CITIES_SIZE):
+                if dCidade[i][j] == 0 and i != j:  # If distance not calculated yet
+                    dCidade[i][j] = round(math.sqrt((x[i] - x[j])**2 + (y[i] - y[j])**2), 4)
+        
+        optimal_cost = calculate_tour_length(optimal_tour, dCidade)
+        
+        # Calculate difference and percent error
+        absolute_difference = best_solution_cost - optimal_cost
+        percent_error = (absolute_difference / optimal_cost) * 100
+        
+        execution_time = time.time() - start_time  # Calculate execution time
+        
+        # Print results in the requested table format
+        print("\n{:<15} {:<15} {:<30} {:<30} {:<15}".format(
+            "Modelo", 
+            "travelled", 
+            "Distacion tola de ruta optima", 
+            "Gap entre la solucion optima (%)", 
+            "Tiempo(s)"
+        ))
+        print("-" * 105)
+        print("{:<15} {:<15.2f} {:<30.2f} {:<30.2f} {:<15.2f}".format(
+            model_name,
+            best_solution_cost,  # The algorithm's solution distance (travelled)
+            best_solution_cost,  # The algorithm's best route distance 
+            percent_error,       # The percentage gap with reference optimal solution
+            execution_time
+        ))
+        
+        # Plot both the best solution and optimal solution for visual comparison
+        plt.figure(figsize=(12, 10))
+        
+        # Plot cost by generation
+        plt.subplot(2, 1, 1)
+        plt.plot(costByExecution)
+        plt.title("Costo por generación")
+        plt.xlabel("Generación")
+        plt.ylabel("Costo")
+        
+        # Plot the tours
+        plt.subplot(2, 1, 2)
+        
+        # Plot cities
+        plt.scatter(x, y, color='blue', s=10)
+        
+        # Best solution in red
+        best_x = [x[city-1] for city in complete_best_path]
+        best_y = [y[city-1] for city in complete_best_path]
+        plt.plot(best_x, best_y, 'r-', label=f"GA Solution (cost: {best_solution_cost:.2f})")
+        
+        # Optimal tour in green
+        opt_tour_with_return = optimal_tour + [optimal_tour[0]]
+        opt_x = [x[city-1] for city in opt_tour_with_return]
+        opt_y = [y[city-1] for city in opt_tour_with_return]
+        plt.plot(opt_x, opt_y, 'g-', alpha=0.5, label=f"Optimal (cost: {optimal_cost:.2f})")
+        
+        plt.title("Comparación de rutas")
+        plt.legend()
+        plt.tight_layout()
+        
+    except FileNotFoundError:
+        execution_time = time.time() - start_time  # Calculate execution time
+        
+        # Print results in a simplified table format (without optimal solution)
+        print("\n{:<15} {:<15} {:<30} {:<30} {:<15}".format(
+            "Modelo", 
+            "travelled", 
+            "Distacion tola de ruta optima", 
+            "Gap entre la solucion optima (%)", 
+            "Tiempo(s)"
+        ))
+        print("-" * 105)
+        print("{:<15} {:<15.2f} {:<30} {:<30} {:<15.2f}".format(
+            model_name,
+            best_solution_cost,
+            "N/A (archivo no encontrado)",
+            "N/A",
+            execution_time
+        ))
+        
+        # Plot just the cost by generation
+        plt.plot(costByExecution)
+        plt.title("Costo por generación")
+        plt.xlabel("Generación")
+        plt.ylabel("Costo")
+    
     plt.show()
 
 if __name__ == "__main__":
