@@ -1,6 +1,7 @@
 import math
 import random
 import os
+import time
 from matplotlib import pyplot as plt
 
 
@@ -28,6 +29,69 @@ def read_tsp_file(file_path):
                 break
     
     return nodes
+
+
+def read_optimal_tour(file_path):
+    """
+    Lee un archivo de ruta óptima (.tour) y devuelve una lista con el orden de los nodos
+    """
+    tour = []
+    reading_tour = False
+    
+    with open(file_path, 'r') as file:
+        for line in file:
+            line = line.strip()
+            if line == "TOUR_SECTION":
+                reading_tour = True
+                continue
+            if reading_tour and line != "-1":
+                try:
+                    # Los nodos en el archivo .tour están numerados desde 1
+                    node_id = int(line)
+                    # Convertimos a índices basados en 0 para nuestro algoritmo
+                    tour.append(node_id - 1)
+                except ValueError:
+                    continue
+            if line == "-1":
+                break
+    
+    return tour
+
+
+def calculate_tour_distance(tour, nodes):
+    """
+    Calcula la distancia total de una ruta dada
+    """
+    distance = 0.0
+    num_nodes = len(tour)
+    
+    for i in range(num_nodes):
+        from_node = tour[i]
+        to_node = tour[(i + 1) % num_nodes]
+        distance += math.sqrt(
+            pow(nodes[from_node][0] - nodes[to_node][0], 2.0) + 
+            pow(nodes[from_node][1] - nodes[to_node][1], 2.0)
+        )
+    
+    return distance
+
+
+def compare_with_optimal(algorithm_tour, optimal_tour, nodes):
+    """
+    Compara la ruta obtenida por el algoritmo con la ruta óptima
+    """
+    algorithm_distance = calculate_tour_distance(algorithm_tour, nodes)
+    optimal_distance = calculate_tour_distance(optimal_tour, nodes)
+    
+    absolute_difference = algorithm_distance - optimal_distance
+    percentage_difference = (absolute_difference / optimal_distance) * 100.0
+    
+    return {
+        'algorithm_distance': algorithm_distance,
+        'optimal_distance': optimal_distance,
+        'absolute_difference': absolute_difference,
+        'percentage_difference': percentage_difference
+    }
 
 
 class SolveTSPUsingACO:
@@ -168,15 +232,23 @@ class SolveTSPUsingACO:
 
     def run(self):
         print('Started : {0}'.format(self.mode))
+        start_time = time.time()
+        
         if self.mode == 'ACS':
             self._acs()
         elif self.mode == 'Elitist':
             self._elitist()
         else:
             self._max_min()
+            
+        execution_time = time.time() - start_time
+        
         print('Ended : {0}'.format(self.mode))
         print('Sequence : <- {0} ->'.format(' - '.join(str(self.labels[i]) for i in self.global_best_tour)))
-        print('Total distance travelled to complete the tour : {0}\n'.format(round(self.global_best_distance, 2)))
+        print('Total distance travelled to complete the tour : {0}'.format(round(self.global_best_distance, 2)))
+        print('Tiempo de ejecución: {0:.2f} segundos\n'.format(execution_time))
+        
+        return execution_time
 
     def plot(self, line_width=1, point_radius=math.sqrt(2.0), annotation_size=8, dpi=120, save=True, name=None):
         x = [self.nodes[i][0] for i in self.global_best_tour]
@@ -205,20 +277,59 @@ if __name__ == '__main__':
     _nodes = read_tsp_file(tsp_file_path)
     print(f"Se han cargado {len(_nodes)} nodos del archivo TSP.")
     
+    # Leer la ruta óptima
+    print("Cargando la ruta óptima del archivo a280.opt.tour...")
+    optimal_tour_path = os.path.join(os.path.dirname(__file__), 'a280.opt.tour')
+    _optimal_tour = read_optimal_tour(optimal_tour_path)
+    _optimal_distance = calculate_tour_distance(_optimal_tour, _nodes)
+    print(f"Distancia total de la ruta óptima: {round(_optimal_distance, 2)}")
+    
     # Establecer un tamaño adecuado para las anotaciones
     annotation_size = 4  # Tamaño más pequeño para evitar superposiciones
     
+    # Crear una lista para almacenar resultados de comparación
+    comparison_results = []
+    
     print("\nEjecutando algoritmo ACS...")
     acs = SolveTSPUsingACO(mode='ACS', colony_size=_colony_size, steps=_steps, nodes=_nodes)
-    acs.run()
+    acs_time = acs.run()
+    acs_comparison = compare_with_optimal(acs.global_best_tour, _optimal_tour, _nodes)
+    print(f"Comparación con la ruta óptima:")
+    print(f"  - Distancia de la ruta óptima: {round(acs_comparison['optimal_distance'], 2)}")
+    print(f"  - Distancia de la ruta ACS: {round(acs_comparison['algorithm_distance'], 2)}")
+    print(f"  - Diferencia absoluta: {round(acs_comparison['absolute_difference'], 2)}")
+    print(f"  - Diferencia porcentual: {round(acs_comparison['percentage_difference'], 2)}%")
+    comparison_results.append(('ACS', acs_comparison, acs_time))
     acs.plot(annotation_size=annotation_size, name=os.path.join('tour_plots', 'ACS.png'))
     
     print("\nEjecutando algoritmo Elitist...")
     elitist = SolveTSPUsingACO(mode='Elitist', colony_size=_colony_size, steps=_steps, nodes=_nodes)
-    elitist.run()
+    elitist_time = elitist.run()
+    elitist_comparison = compare_with_optimal(elitist.global_best_tour, _optimal_tour, _nodes)
+    print(f"Comparación con la ruta óptima:")
+    print(f"  - Distancia de la ruta óptima: {round(elitist_comparison['optimal_distance'], 2)}")
+    print(f"  - Distancia de la ruta Elitist: {round(elitist_comparison['algorithm_distance'], 2)}")
+    print(f"  - Diferencia absoluta: {round(elitist_comparison['absolute_difference'], 2)}")
+    print(f"  - Diferencia porcentual: {round(elitist_comparison['percentage_difference'], 2)}%")
+    comparison_results.append(('Elitist', elitist_comparison, elitist_time))
     elitist.plot(annotation_size=annotation_size, name=os.path.join('tour_plots', 'Elitist.png'))
     
     print("\nEjecutando algoritmo MaxMin...")
     max_min = SolveTSPUsingACO(mode='MaxMin', colony_size=_colony_size, steps=_steps, nodes=_nodes)
-    max_min.run()
+    maxmin_time = max_min.run()
+    maxmin_comparison = compare_with_optimal(max_min.global_best_tour, _optimal_tour, _nodes)
+    print(f"Comparación con la ruta óptima:")
+    print(f"  - Distancia de la ruta óptima: {round(maxmin_comparison['optimal_distance'], 2)}")
+    print(f"  - Distancia de la ruta MaxMin: {round(maxmin_comparison['algorithm_distance'], 2)}")
+    print(f"  - Diferencia absoluta: {round(maxmin_comparison['absolute_difference'], 2)}")
+    print(f"  - Diferencia porcentual: {round(maxmin_comparison['percentage_difference'], 2)}%")
+    comparison_results.append(('MaxMin', maxmin_comparison, maxmin_time))
     max_min.plot(annotation_size=annotation_size, name=os.path.join('tour_plots', 'MaxMin.png'))
+    
+    # Resumen comparativo
+    print("\n======== RESUMEN DE COMPARACIÓN ========")
+    print("Algoritmo\tDistancia\tDif. Óptima\t% Dif.\t\tTiempo (s)")
+    print("-" * 75)
+    print(f"Óptimo\t\t{round(_optimal_distance, 2)}\t-\t\t-\t\t-")
+    for name, result, execution_time in comparison_results:
+        print(f"{name}\t\t{round(result['algorithm_distance'], 2)}\t{round(result['absolute_difference'], 2)}\t\t{round(result['percentage_difference'], 2)}%\t\t{execution_time:.2f}")
